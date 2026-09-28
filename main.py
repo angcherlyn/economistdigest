@@ -7,6 +7,7 @@ from chromadb.utils import embedding_functions
 import anthropic
 import feedparser
 from dotenv import load_dotenv
+import hashlib
 
 load_dotenv()
 
@@ -60,7 +61,7 @@ def fetch_real_rss(feed_url: str, source_name: str, max_entries: int = 5) -> lis
             link = entry.get('link', entry.get('id', 'no-link'))
 
             articles.append({
-                "id": f"news-{source_name.lower().replace(' ', '-')}-{abs(hash(link)) % 100000}",
+                "id": f"news-{source_name.lower().replace(' ', '-')}-{hashlib.md5(link.encode()).hexdigest()[:10]}",
                 "title": entry.get('title', 'Untitled'),
                 "source": source_name,
                 "date": published,
@@ -114,6 +115,10 @@ def ingest_rss_data(use_local_test_feed: bool = False):
     a live URL — this is ONLY for sandbox/offline testing of the parsing
     logic. On your laptop, run with the default False to hit real feeds.
     """
+    existing = collection.get()
+    if existing["ids"]:
+        collection.delete(ids=existing["ids"])
+    
     if use_local_test_feed:
         feed_sources = [("sample_feed.xml", "Federal Reserve Board (LOCAL TEST FILE)")]
     else:
@@ -198,9 +203,12 @@ FRED_TOOL_SCHEMA = {
 def run_agentic_pipeline() -> str:
     print("🔍 Fetching vector contexts from Chroma DB...")
     query_results = collection.query(
-        query_texts=["Federal Reserve ECB policy rates inflation Waller outlook"],
+        query_texts=["central bank monetary policy interest rates inflation economic outlook"],
         n_results=5
     )
+    print(f"   Chunks in store: {collection.count()}")
+    for doc_id in query_results['ids'][0]:
+        print(f"   retrieved: {doc_id}")
     retrieved_context = "No database context found."
     if query_results and 'documents' in query_results and query_results['documents']:
         retrieved_context = "\n\n".join(query_results['documents'][0])
